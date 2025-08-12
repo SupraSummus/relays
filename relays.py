@@ -21,15 +21,15 @@ FLOATING = WireState.FLOATING
 SHORT_CIRCUIT = WireState.SHORT_CIRCUIT
 
 # Component definition
-@dataclass
+@dataclass(frozen=True)
 class Relay:
     """5-pin relay: 2 coil pins, 1 common, 1 NO, 1 NC"""
-    name: str
     coil_a: str      # Coil pin A wire
     coil_b: str      # Coil pin B wire  
     comm: str        # Common pin wire
     no: str          # Normally Open pin wire
     nc: str = None   # Normally Closed pin wire (optional)
+    name: str = None # Optional name for debugging/display purposes
 
 # Relay can be in three states during switching
 class RelayPosition(Enum):
@@ -39,7 +39,7 @@ class RelayPosition(Enum):
 
 # State is just dictionaries
 WireStates = Dict[str, WireState]
-RelayStates = Dict[str, RelayPosition]
+RelayStates = Dict[Relay, RelayPosition]
 
 def propagate_signals(
     relays: List[Relay],
@@ -57,7 +57,7 @@ def propagate_signals(
     connections = []
     
     for relay in relays:
-        pos = relay_states.get(relay.name, RelayPosition.OFF)
+        pos = relay_states.get(relay, RelayPosition.OFF)
         
         if pos == RelayPosition.ON and relay.no:
             # Connect comm and NO
@@ -135,7 +135,7 @@ def get_unstable_relays(
     relays: List[Relay],
     relay_states: RelayStates,
     wire_states: WireStates
-) -> Set[str]:
+) -> Set[Relay]:
     """Find relays that need to change state based on coil voltage"""
     unstable = set()
     
@@ -147,21 +147,21 @@ def get_unstable_relays(
         # Relay energizes when coil_a is HIGH and coil_b is LOW
         coil_energized = (coil_a_state == HIGH and coil_b_state == LOW)
         
-        current_pos = relay_states.get(relay.name, RelayPosition.OFF)
+        current_pos = relay_states.get(relay, RelayPosition.OFF)
         
         # Check if relay needs to change
         if coil_energized and current_pos != RelayPosition.ON:
-            unstable.add(relay.name)
+            unstable.add(relay)
         elif not coil_energized and current_pos != RelayPosition.OFF:
-            unstable.add(relay.name)
+            unstable.add(relay)
         # Relays in SWITCHING state are always unstable
         elif current_pos == RelayPosition.SWITCHING:
-            unstable.add(relay.name)
+            unstable.add(relay)
     
     return unstable
 
 def get_relay_transitions(
-    relay_name: str,
+    relay: Relay,
     relays: List[Relay],
     relay_states: RelayStates,
     wire_states: WireStates
@@ -170,12 +170,7 @@ def get_relay_transitions(
     Get possible next positions for a relay.
     Implements break-before-make: OFF -> SWITCHING -> ON and ON -> SWITCHING -> OFF
     """
-    # Find the relay
-    relay = next((r for r in relays if r.name == relay_name), None)
-    if not relay:
-        return []
-    
-    current_pos = relay_states.get(relay_name, RelayPosition.OFF)
+    current_pos = relay_states.get(relay, RelayPosition.OFF)
     
     # Get coil state
     coil_a_state = wire_states.get(relay.coil_a, FLOATING)
@@ -205,14 +200,14 @@ def get_relay_transitions(
     return []
 
 def transition_relay(
-    relay_name: str,
+    relay: Relay,
     new_position: RelayPosition,
     relays: List[Relay],
     relay_states: RelayStates,
     fixed_wires: WireStates
 ) -> Tuple[RelayStates, WireStates]:
     """Apply a relay transition and recompute wire states"""
-    new_relay_states = {**relay_states, relay_name: new_position}
+    new_relay_states = {**relay_states, relay: new_position}
     new_wire_states = propagate_signals(relays, new_relay_states, fixed_wires)
     return new_relay_states, new_wire_states
 
@@ -237,7 +232,8 @@ def explore_all_sequences(
     current_state = (initial_relay_states, wire_states)
     
     # Create state key for cycle detection
-    state_key = str(sorted(initial_relay_states.items()))
+    # Sort by object id since relays don't have a natural ordering
+    state_key = str(sorted(initial_relay_states.items(), key=lambda x: id(x[0])))
     if state_key in visited or max_depth <= 0:
         return [[current_state]]
     
@@ -251,12 +247,12 @@ def explore_all_sequences(
     
     # Try each possible transition
     all_paths = []
-    for relay_name in unstable:
-        transitions = get_relay_transitions(relay_name, relays, initial_relay_states, wire_states)
+    for relay in unstable:
+        transitions = get_relay_transitions(relay, relays, initial_relay_states, wire_states)
         
         for new_position in transitions:
             new_relay_states, new_wire_states = transition_relay(
-                relay_name, new_position, relays, initial_relay_states, fixed_wires
+                relay, new_position, relays, initial_relay_states, fixed_wires
             )
             
             future_paths = explore_all_sequences(
@@ -305,32 +301,32 @@ def inverter_circuit():
     """Simple inverter using one relay
     Output is the common pin, switches between VCC (NC) and GND (NO)"""
     return [
-        Relay(name='Inverter', coil_a='In', coil_b='GND', comm='Out', no='GND', nc='VCC')
+        Relay(coil_a='In', coil_b='GND', comm='Out', no='GND', nc='VCC', name='Inverter')
     ]
 
 def buffer_with_glitch():
     """Buffer that might glitch during switching
     Output is common pin, switches between GND (NC) and VCC (NO)"""
     return [
-        Relay(name='Buffer', coil_a='In', coil_b='GND', comm='Out', no='VCC', nc='GND')
+        Relay(coil_a='In', coil_b='GND', comm='Out', no='VCC', nc='GND', name='Buffer')
     ]
 
 def race_condition_circuit():
     """Two relays racing to set output - one pulls high, one pulls low"""
     return [
-        Relay(name='Path1_High', coil_a='Trigger', coil_b='GND', comm='VCC', no='Out'),
-        Relay(name='Path2_Low', coil_a='Trigger', coil_b='GND', comm='GND', no='Out'),
+        Relay(coil_a='Trigger', coil_b='GND', comm='VCC', no='Out', name='Path1_High'),
+        Relay(coil_a='Trigger', coil_b='GND', comm='GND', no='Out', name='Path2_Low'),
     ]
 
 def sr_latch():
     """SR latch - cross-coupled relays"""
     return [
         # Main SR relays
-        Relay(name='S_relay', coil_a='S', coil_b='GND', comm='VCC', no='Q'),
-        Relay(name='R_relay', coil_a='R', coil_b='GND', comm='VCC', no='Q_bar'),
+        Relay(coil_a='S', coil_b='GND', comm='VCC', no='Q', name='S_relay'),
+        Relay(coil_a='R', coil_b='GND', comm='VCC', no='Q_bar', name='R_relay'),
         # Hold relays for feedback
-        Relay(name='Q_hold', coil_a='Q', coil_b='GND', comm='VCC', no='Q'),
-        Relay(name='Qbar_hold', coil_a='Q_bar', coil_b='GND', comm='VCC', no='Q_bar'),
+        Relay(coil_a='Q', coil_b='GND', comm='VCC', no='Q', name='Q_hold'),
+        Relay(coil_a='Q_bar', coil_b='GND', comm='VCC', no='Q_bar', name='Qbar_hold'),
     ]
 
 # Test functions
@@ -338,6 +334,7 @@ def sr_latch():
 def test_inverter():
     print("Testing Inverter...")
     relays = inverter_circuit()
+    inverter_relay = relays[0]  # Get the relay object
     
     for input_val in [LOW, HIGH]:
         print(f"\n  Input={input_val.name}:")
@@ -352,7 +349,7 @@ def test_inverter():
         for path in paths:
             print(f"    Path: ", end="")
             for relay_states, wire_states in path:
-                inv_state = relay_states.get('Inverter', RelayPosition.OFF)
+                inv_state = relay_states.get(inverter_relay, RelayPosition.OFF)
                 out_state = wire_states.get('Out', FLOATING)
                 print(f"[{inv_state.name}, Out={out_state.name}] -> ", end="")
             print("done")
@@ -366,6 +363,7 @@ def test_inverter():
 def test_glitch_detection():
     print("\nTesting Glitch Detection in Buffer...")
     relays = buffer_with_glitch()
+    buffer_relay = relays[0]  # Get the relay object
     
     print("  Switching from LOW to HIGH:")
     inputs = {'In': HIGH, 'VCC': HIGH, 'GND': LOW}
@@ -386,13 +384,15 @@ def test_glitch_detection():
     for path in paths[:1]:  # Just show first path
         print("  Example path:")
         for relay_states, wire_states in path:
-            buf_state = relay_states.get('Buffer', RelayPosition.OFF)
+            buf_state = relay_states.get(buffer_relay, RelayPosition.OFF)
             out_state = wire_states.get('Out', FLOATING)
             print(f"    Buffer={buf_state.name:10} Out={out_state.name}")
 
 def test_race_condition():
     print("\nTesting Race Condition...")
     relays = race_condition_circuit()
+    path1_relay = relays[0]  # Get the relay objects
+    path2_relay = relays[1]
     
     inputs = {'Trigger': HIGH, 'VCC': HIGH, 'GND': LOW}
     paths = simulate(relays, inputs)
@@ -412,8 +412,8 @@ def test_race_condition():
     short_circuit_found = False
     for path in paths:
         for relay_states, wire_states in path:
-            p1 = relay_states.get('Path1_High', RelayPosition.OFF)
-            p2 = relay_states.get('Path2_Low', RelayPosition.OFF)
+            p1 = relay_states.get(path1_relay, RelayPosition.OFF)
+            p2 = relay_states.get(path2_relay, RelayPosition.OFF)
             if p1 == RelayPosition.ON and p2 == RelayPosition.ON:
                 out = wire_states.get('Out', FLOATING)
                 if out == SHORT_CIRCUIT:
@@ -431,8 +431,8 @@ def test_race_condition():
             shown.add(final_out)
             print(f"\n    Path to Out={final_out.name}:")
             for relay_states, wire_states in path[-3:]:  # Show last 3 states
-                p1 = relay_states.get('Path1_High', RelayPosition.OFF)
-                p2 = relay_states.get('Path2_Low', RelayPosition.OFF)
+                p1 = relay_states.get(path1_relay, RelayPosition.OFF)
+                p2 = relay_states.get(path2_relay, RelayPosition.OFF)
                 out = wire_states.get('Out', FLOATING)
                 print(f"      Path1_High={p1.name:10} Path2_Low={p2.name:10} -> Out={out.name}")
 
