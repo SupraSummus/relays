@@ -6,7 +6,7 @@ Tests are kept small and elegant, focusing on core functionality.
 import pytest
 from relays import (
     Relay, WireState, RelayPosition,
-    HIGH, LOW, FLOATING,
+    HIGH, LOW, FLOATING, SHORT_CIRCUIT,
     propagate_signals, get_unstable_relays, transition_relay,
     inverter_circuit, buffer_with_glitch, race_condition_circuit
 )
@@ -17,6 +17,7 @@ def test_wire_states():
     assert HIGH == WireState.HIGH
     assert LOW == WireState.LOW
     assert FLOATING == WireState.FLOATING
+    assert SHORT_CIRCUIT == WireState.SHORT_CIRCUIT
 
 
 def test_relay_creation():
@@ -150,7 +151,26 @@ def test_race_condition_short_circuit():
     relay_states = {'Path1_High': RelayPosition.ON, 'Path2_Low': RelayPosition.ON}
     result = propagate_signals(relays, relay_states, inputs)
     
-    assert result['Out'] == FLOATING  # Short circuit detected
+    assert result['Out'] == SHORT_CIRCUIT  # Short circuit detected
+
+
+def test_short_circuit_vs_floating():
+    """Test that short circuits are distinguished from floating wires."""
+    # Create a simple relay to test floating vs short circuit
+    relay = Relay(name='R1', coil_a='coil_a', coil_b='coil_b', comm='comm', no='no', nc='nc')
+    
+    # Test floating: relay in switching position with fixed wires
+    relay_states = {'R1': RelayPosition.SWITCHING}
+    fixed_wires = {'no': HIGH, 'nc': LOW}
+    result = propagate_signals([relay], relay_states, fixed_wires)
+    assert result['comm'] == FLOATING  # Not connected to anything
+    
+    # Test short circuit: create conflicting signals using race condition circuit
+    race_relays = race_condition_circuit()
+    inputs = {'Trigger': HIGH, 'VCC': HIGH, 'GND': LOW}
+    conflict_states = {'Path1_High': RelayPosition.ON, 'Path2_Low': RelayPosition.ON}
+    result = propagate_signals(race_relays, conflict_states, inputs)
+    assert result['Out'] == SHORT_CIRCUIT  # Actual conflict
 
 
 def test_circuit_creation_functions():
