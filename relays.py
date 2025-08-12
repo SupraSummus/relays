@@ -12,11 +12,13 @@ class WireState(Enum):
     LOW = 0
     HIGH = 1
     FLOATING = None
+    SHORT_CIRCUIT = -1  # Indicates conflicting signals (short circuit)
     
 # Constants for readability
 HIGH = WireState.HIGH
 LOW = WireState.LOW
 FLOATING = WireState.FLOATING
+SHORT_CIRCUIT = WireState.SHORT_CIRCUIT
 
 # Component definition
 @dataclass
@@ -96,17 +98,17 @@ def propagate_signals(
         for wire in group:
             if wire in fixed_wires:
                 values.append(fixed_wires[wire])
-            elif wire in wires and wires[wire] != FLOATING:
+            elif wire in wires and wires[wire] not in (FLOATING, SHORT_CIRCUIT):
                 values.append(wires[wire])
         
         if values:
             # Check for conflicts (short circuits)
             if len(set(values)) > 1:
                 # Multiple different values - this is a short circuit!
-                # Mark all wires in group as FLOATING (undefined)
+                # Mark all wires in group as SHORT_CIRCUIT
                 for wire in group:
                     if wire not in fixed_wires:
-                        wires[wire] = FLOATING
+                        wires[wire] = SHORT_CIRCUIT
             else:
                 # All values are the same, propagate to all wires in group
                 value = values[0]
@@ -414,7 +416,7 @@ def test_race_condition():
             p2 = relay_states.get('Path2_Low', RelayPosition.OFF)
             if p1 == RelayPosition.ON and p2 == RelayPosition.ON:
                 out = wire_states.get('Out', FLOATING)
-                if out == FLOATING:
+                if out == SHORT_CIRCUIT:
                     short_circuit_found = True
     
     if short_circuit_found:
