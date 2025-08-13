@@ -3,7 +3,7 @@ Asynchronous Relay Circuit Prover - Component-based approach
 Models actual relay components with break-before-make switching
 """
 
-from typing import Dict, Set, List, Tuple, Optional
+from typing import Dict, Set, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -29,7 +29,7 @@ class Relay:
     comm: str        # Common pin wire
     no: str          # Normally Open pin wire
     nc: str = None   # Normally Closed pin wire (optional)
-    name: str = None # Optional name for debugging/display purposes
+    name: str = None  # Optional name for debugging/display purposes
 
 # Relay can be in three states during switching
 class RelayPosition(Enum):
@@ -146,8 +146,8 @@ def get_unstable_relays(
         
         # Relay energizes when coil_a is HIGH and coil_b is LOW
         coil_energized = (
-            (coil_a_state == HIGH and coil_b_state == LOW) or
-            (coil_a_state == LOW and coil_b_state == HIGH)
+            (coil_a_state == HIGH and coil_b_state == LOW)
+            or (coil_a_state == LOW and coil_b_state == HIGH)
         )
         
         current_pos = relay_states.get(relay, RelayPosition.OFF)
@@ -350,7 +350,7 @@ def test_inverter():
         
         # Show intermediate states
         for path in paths:
-            print(f"    Path: ", end="")
+            print("    Path: ", end="")
             for relay_states, wire_states in path:
                 inv_state = relay_states.get(inverter_relay, RelayPosition.OFF)
                 out_state = wire_states.get('Out', FLOATING)
@@ -403,7 +403,7 @@ def test_race_condition():
     stable, outputs = wait_for_stable(relays, inputs, ['Out'])
     
     print(f"  Found {len(paths)} execution paths")
-    print(f"  Possible final outputs:")
+    print("  Possible final outputs:")
     for out in outputs:
         out_val = dict(out)['Out']
         print(f"    Out = {out_val.name}")
