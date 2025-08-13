@@ -18,8 +18,8 @@ jobs:
 
     - name: Run tests
       run: |
-        python -m pytest -v
+        poetry run pytest -v
 
     - name: Test main module execution
       run: |
-        python relays.py
+        poetry run python relays.py
