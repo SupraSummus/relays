@@ -1,0 +1,12 @@
+[flake8]
+# Disabled annoying checks as requested in issue:
+# E501: line too long - main annoying check mentioned
+# W503: line break before binary operator (conflicts with W504)
+# E203: whitespace before ':' (conflicts with black formatter)
+# W291: trailing whitespace
+# W293: blank line contains whitespace  
+# E302: expected 2 blank lines, found 1
+# E305: expected 2 blank lines after class or function definition
+ignore = E501,W503,E203,W291,W293,E302,E305
+max-line-length = 120
+exclude = .git,__pycache__,*.pyc,.pytest_cache,venv,env,.venv,.env,dist,build
