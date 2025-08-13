@@ -145,7 +145,10 @@ def get_unstable_relays(
         coil_b_state = wire_states.get(relay.coil_b, FLOATING)
         
         # Relay energizes when coil_a is HIGH and coil_b is LOW
-        coil_energized = (coil_a_state == HIGH and coil_b_state == LOW)
+        coil_energized = (
+            (coil_a_state == HIGH and coil_b_state == LOW) or
+            (coil_a_state == LOW and coil_b_state == HIGH)
+        )
         
         current_pos = relay_states.get(relay, RelayPosition.OFF)
         

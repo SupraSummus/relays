@@ -79,16 +79,27 @@ def test_get_unstable_relays_energized():
     assert relay in unstable
 
 
-def test_get_unstable_relays_stable():
-    """Test stable relay detection."""
+@pytest.mark.parametrize(
+    ('relay_state', 'coil_a_state', 'coil_b_state', 'expected_unstable'),
+    [
+        (RelayPosition.OFF, WireState.HIGH, WireState.LOW, True),
+        (RelayPosition.OFF, WireState.LOW, WireState.HIGH, True),
+        (RelayPosition.SWITCHING, WireState.LOW, WireState.HIGH, True),
+        (RelayPosition.SWITCHING, WireState.LOW, WireState.LOW, True),
+        (RelayPosition.ON, WireState.HIGH, WireState.LOW, False),
+        (RelayPosition.ON, WireState.LOW, WireState.HIGH, False),
+        (RelayPosition.ON, WireState.HIGH, WireState.HIGH, True),
+        (RelayPosition.ON, WireState.SHORT_CIRCUIT, WireState.LOW, True),
+        (RelayPosition.ON, WireState.FLOATING, WireState.HIGH, True),
+        (RelayPosition.OFF, WireState.FLOATING, WireState.SHORT_CIRCUIT, False),
+    ],
+)
+def test_get_unstable_relays(relay_state, coil_a_state, coil_b_state, expected_unstable):
     relay = Relay(coil_a='coil_a', coil_b='coil_b', comm='comm', no='no')
-    
-    # Coil not energized and relay is OFF - stable
-    relay_states = {relay: RelayPosition.OFF}
-    wire_states = {'coil_a': LOW, 'coil_b': LOW}
-    
+    relay_states = {relay: relay_state}
+    wire_states = {'coil_a': coil_a_state, 'coil_b': coil_b_state}
     unstable = get_unstable_relays([relay], relay_states, wire_states)
-    assert relay not in unstable
+    assert (relay in unstable) == expected_unstable
 
 
 def test_transition_relay():
